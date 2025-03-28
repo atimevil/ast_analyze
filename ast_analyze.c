@@ -19,15 +19,17 @@ Node* create_node() {
     return node;
 }
 
+// 기존 sscanf 방식 대신 문자열 탐색 방식으로 변경
 void parse_node(FILE* file, Node* node) {
     char line[MAX_TOKEN_LENGTH];
     while (fgets(line, sizeof(line), file)) {
-        if (strstr(line, "_nodetype")) {
-            sscanf(line, "\"_nodetype\": \"%[^\"]\"", node->type);
-        } else if (strstr(line, "\"name\":")) {
-            sscanf(line, "\"name\": \"%[^\"]\"", node->name);
-        } else if (strstr(line, "\"value\":")) {
-            sscanf(line, "\"value\": \"%[^\"]\"", node->value);
+        char* key_pos;
+        if ((key_pos = strstr(line, "\"_nodetype\""))) {
+            extract_value(key_pos, node->type);
+        } else if ((key_pos = strstr(line, "\"name\""))) {
+            extract_value(key_pos, node->name);
+        } else if ((key_pos = strstr(line, "\"value\""))) {
+            extract_value(key_pos, node->value);
         } else if (strstr(line, "{")) {
             Node* child = create_node();
             parse_node(file, child);
@@ -37,6 +39,22 @@ void parse_node(FILE* file, Node* node) {
         }
     }
 }
+
+// 값 추출 헬퍼 함수
+void extract_value(char* start, char* dest) {
+    char* colon = strchr(start, ':');
+    if (!colon) return;
+    
+    char* quote_open = strchr(colon, '"');
+    if (!quote_open) return;
+    
+    char* quote_close = strchr(quote_open + 1, '"');
+    if (!quote_close) return;
+
+    strncpy(dest, quote_open + 1, quote_close - quote_open - 1);
+    dest[quote_close - quote_open - 1] = '\0';
+}
+
 
 void print_node(Node* node, int depth) {
     for (int i = 0; i < depth; i++) printf("  ");
@@ -51,7 +69,7 @@ void print_node(Node* node, int depth) {
 }
 
 int main() {
-    FILE* file = fopen("ast.json", "r");
+    FILE* file = fopen("ast.json", "rb");
     if (!file) {
         printf("Failed to open file\n");
         return 1;
@@ -62,8 +80,6 @@ int main() {
     fclose(file);
 
     print_node(root, 0);
-
-    // 여기서 메모리 해제 로직을 추가해야 합니다.
 
     return 0;
 }

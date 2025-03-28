@@ -42,8 +42,7 @@ void analyze_ast(Node* node, AnalysisResult* result, int in_function) {
                 break;
             }
         }
-        in_function = 1; 
-    }
+        in_function = 1;  
     
     if (in_function && strcmp(node->type, "Param") == 0) {
         char type[MAX_TOKEN_LENGTH] = "";
@@ -68,6 +67,40 @@ void analyze_ast(Node* node, AnalysisResult* result, int in_function) {
     }
 }
 
+void extract_value(char* start, char* dest) {
+    char* colon = strchr(start, ':');
+    if (!colon) return;
+    
+    char* quote_open = strchr(colon, '"');
+    if (!quote_open) return;
+    
+    char* quote_close = strchr(quote_open + 1, '"');
+    if (!quote_close) return;
+
+    strncpy(dest, quote_open + 1, quote_close - quote_open - 1);
+    dest[quote_close - quote_open - 1] = '\0';
+}
+
+void parse_node(FILE* file, Node* node) {
+    char line[MAX_TOKEN_LENGTH];
+    while (fgets(line, sizeof(line), file)) {
+        char* key_pos;
+        if ((key_pos = strstr(line, "\"_nodetype\""))) {
+            extract_value(key_pos, node->type);
+        } else if ((key_pos = strstr(line, "\"name\""))) {
+            extract_value(key_pos, node->name);
+        } else if ((key_pos = strstr(line, "\"value\""))) {
+            extract_value(key_pos, node->value);
+        } else if (strstr(line, "{")) {
+            Node* child = create_node();
+            parse_node(file, child);
+            node->children[node->child_count++] = child;
+        } else if (strstr(line, "}")) {
+            return;
+        }
+    }
+}
+
 void print_analysis(AnalysisResult* result) {
     printf("\n=== AST 분석 결과 ===\n");
     printf("• 전체 함수 개수: %d\n", result->total_functions);
@@ -86,24 +119,6 @@ void print_analysis(AnalysisResult* result) {
     printf("\n• 전체 IF문 개수: %d\n", result->total_if_statements);
 }
 
-void parse_node(FILE* file, Node* node) {
-    char line[MAX_TOKEN_LENGTH];
-    while (fgets(line, sizeof(line), file)) {
-        if (strstr(line, "_nodetype")) {
-            sscanf(line, "\"_nodetype\": \"%[^\"]\"", node->type);
-        } else if (strstr(line, "\"name\":")) {
-            sscanf(line, "\"name\": \"%[^\"]\"", node->name);
-        } else if (strstr(line, "\"value\":")) {
-            sscanf(line, "\"value\": \"%[^\"]\"", node->value);
-        } else if (strstr(line, "{")) {
-            Node* child = create_node();
-            parse_node(file, child);
-            node->children[node->child_count++] = child;
-        } else if (strstr(line, "}")) {
-            return;
-        }
-    }
-}
 
 void print_node(Node* node, int depth) {
     for (int i = 0; i < depth; i++) printf("  ");
@@ -118,7 +133,7 @@ void print_node(Node* node, int depth) {
 }
 
 int main() {
-    FILE* file = fopen("ast.json", "r");
+    FILE* file = fopen("ast.json", "rb");
     if (!file) {
         printf("Failed to open file\n");
         return 1;
@@ -129,10 +144,9 @@ int main() {
     fclose(file);
 
     print_node(root, 0);
-
     AnalysisResult result = {0};
     analyze_ast(root, &result, 0);
     print_analysis(&result);
-
+    
     return 0;
 }

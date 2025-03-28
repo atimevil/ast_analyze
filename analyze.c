@@ -66,6 +66,7 @@ void analyze_ast(Node* node, AnalysisResult* result, int in_function) {
         analyze_ast(node->children[i], result, in_function);
     }
 }
+}
 
 void extract_value(char* start, char* dest) {
     char* colon = strchr(start, ':');

@@ -79,7 +79,14 @@ int main() {
     parse_node(file, root);
     fclose(file);
 
+    // 파일 요약 출력
     print_node(root, 0);
+    // 함수 개수 추출
+    // 함수 리턴 타입 추출
+    // 함수 이름 추출
+    // 함수 변수명 추출
+    // 함수 IF 조건 개수 추출
 
+    
     return 0;
 }

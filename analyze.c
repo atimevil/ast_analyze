@@ -4,6 +4,17 @@
 
 #define MAX_TOKEN_LENGTH 1000
 #define MAX_CHILDREN 100
+#define MAX_FUNCTIONS 50
+
+typedef struct {
+    int total_functions;
+    int total_if_statements;
+    struct {
+        char name[MAX_TOKEN_LENGTH];
+        char return_type[MAX_TOKEN_LENGTH];
+        char params[MAX_TOKEN_LENGTH];
+    } functions[MAX_FUNCTIONS];
+} AnalysisResult;
 
 typedef struct Node {
     char type[MAX_TOKEN_LENGTH];
@@ -19,32 +30,71 @@ Node* create_node() {
     return node;
 }
 
-// 값 추출 헬퍼 함수
-void extract_value(char* start, char* dest) {
-    char* colon = strchr(start, ':');
-    if (!colon) return;
+void analyze_ast(Node* node, AnalysisResult* result, int in_function) {
+    if (strcmp(node->type, "FuncDecl") == 0) {
+        int idx = result->total_functions++;
+        strcpy(result->functions[idx].name, node->name);
+        
+        for (int i = 0; i < node->child_count; i++) {
+            Node* child = node->children[i];
+            if (strcmp(child->type, "Type") == 0) {
+                strcpy(result->functions[idx].return_type, child->name);
+                break;
+            }
+        }
+        in_function = 1; 
+    }
     
-    char* quote_open = strchr(colon, '"');
-    if (!quote_open) return;
+    if (in_function && strcmp(node->type, "Param") == 0) {
+        char type[MAX_TOKEN_LENGTH] = "";
+        for (int i = 0; i < node->child_count; i++) {
+            if (strcmp(node->children[i]->type, "Type") == 0) {
+                strcpy(type, node->children[i]->name);
+                break;
+            }
+        }
+        strcat(result->functions[result->total_functions-1].params, type);
+        strcat(result->functions[result->total_functions-1].params, " ");
+        strcat(result->functions[result->total_functions-1].params, node->name);
+        strcat(result->functions[result->total_functions-1].params, ", ");
+    }
     
-    char* quote_close = strchr(quote_open + 1, '"');
-    if (!quote_close) return;
-
-    strncpy(dest, quote_open + 1, quote_close - quote_open - 1);
-    dest[quote_close - quote_open - 1] = '\0';
+    if (strcmp(node->type, "If") == 0) {
+        result->total_if_statements++;
+    }
+    
+    for (int i = 0; i < node->child_count; i++) {
+        analyze_ast(node->children[i], result, in_function);
+    }
 }
 
-// 기존 sscanf 방식 대신 문자열 탐색 방식으로 변경
+void print_analysis(AnalysisResult* result) {
+    printf("\n=== AST 분석 결과 ===\n");
+    printf("• 전체 함수 개수: %d\n", result->total_functions);
+    
+    for (int i = 0; i < result->total_functions; i++) {
+        printf("\n[함수 %d]\n", i+1);
+        printf("  이름: %s\n", result->functions[i].name);
+        printf("  반환 타입: %s\n", result->functions[i].return_type);
+        
+        if (strlen(result->functions[i].params) > 0) {
+            result->functions[i].params[strlen(result->functions[i].params)-2] = '\0';
+        }
+        printf("  파라미터: %s\n", result->functions[i].params);
+    }
+    
+    printf("\n• 전체 IF문 개수: %d\n", result->total_if_statements);
+}
+
 void parse_node(FILE* file, Node* node) {
     char line[MAX_TOKEN_LENGTH];
     while (fgets(line, sizeof(line), file)) {
-        char* key_pos;
-        if ((key_pos = strstr(line, "\"_nodetype\""))) {
-            extract_value(key_pos, node->type);
-        } else if ((key_pos = strstr(line, "\"name\""))) {
-            extract_value(key_pos, node->name);
-        } else if ((key_pos = strstr(line, "\"value\""))) {
-            extract_value(key_pos, node->value);
+        if (strstr(line, "_nodetype")) {
+            sscanf(line, "\"_nodetype\": \"%[^\"]\"", node->type);
+        } else if (strstr(line, "\"name\":")) {
+            sscanf(line, "\"name\": \"%[^\"]\"", node->name);
+        } else if (strstr(line, "\"value\":")) {
+            sscanf(line, "\"value\": \"%[^\"]\"", node->value);
         } else if (strstr(line, "{")) {
             Node* child = create_node();
             parse_node(file, child);
@@ -54,7 +104,6 @@ void parse_node(FILE* file, Node* node) {
         }
     }
 }
-
 
 void print_node(Node* node, int depth) {
     for (int i = 0; i < depth; i++) printf("  ");
@@ -69,7 +118,7 @@ void print_node(Node* node, int depth) {
 }
 
 int main() {
-    FILE* file = fopen("ast.json", "rb");
+    FILE* file = fopen("ast.json", "r");
     if (!file) {
         printf("Failed to open file\n");
         return 1;
@@ -79,14 +128,11 @@ int main() {
     parse_node(file, root);
     fclose(file);
 
-    // 파일 요약 출력
     print_node(root, 0);
-    // 함수 개수 추출
-    // 함수 리턴 타입 추출
-    // 함수 이름 추출
-    // 함수 변수명 추출
-    // 함수 IF 조건 개수 추출
 
-    
+    AnalysisResult result = {0};
+    analyze_ast(root, &result, 0);
+    print_analysis(&result);
+
     return 0;
 }

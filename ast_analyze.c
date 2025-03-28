@@ -19,6 +19,21 @@ Node* create_node() {
     return node;
 }
 
+// 값 추출 헬퍼 함수
+void extract_value(char* start, char* dest) {
+    char* colon = strchr(start, ':');
+    if (!colon) return;
+    
+    char* quote_open = strchr(colon, '"');
+    if (!quote_open) return;
+    
+    char* quote_close = strchr(quote_open + 1, '"');
+    if (!quote_close) return;
+
+    strncpy(dest, quote_open + 1, quote_close - quote_open - 1);
+    dest[quote_close - quote_open - 1] = '\0';
+}
+
 // 기존 sscanf 방식 대신 문자열 탐색 방식으로 변경
 void parse_node(FILE* file, Node* node) {
     char line[MAX_TOKEN_LENGTH];
@@ -38,21 +53,6 @@ void parse_node(FILE* file, Node* node) {
             return;
         }
     }
-}
-
-// 값 추출 헬퍼 함수
-void extract_value(char* start, char* dest) {
-    char* colon = strchr(start, ':');
-    if (!colon) return;
-    
-    char* quote_open = strchr(colon, '"');
-    if (!quote_open) return;
-    
-    char* quote_close = strchr(quote_open + 1, '"');
-    if (!quote_close) return;
-
-    strncpy(dest, quote_open + 1, quote_close - quote_open - 1);
-    dest[quote_close - quote_open - 1] = '\0';
 }
 
 

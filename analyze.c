@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_TOKEN_LENGTH 1000
-#define MAX_CHILDREN 100
-#define MAX_FUNCTIONS 50
+#define MAX_TOKEN_LENGTH 50000
+#define MAX_CHILDREN 10000
+#define MAX_FUNCTIONS 5000
 
 typedef struct {
     int total_functions;

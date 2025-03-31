@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_TOKEN_LENGTH 15000
+#define MAX_TOKEN_LENGTH 5000
 #define MAX_CHILDREN 5000
 #define MAX_FUNCTIONS 5000
 

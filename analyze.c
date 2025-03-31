@@ -3,7 +3,7 @@
 #include <string.h>
 
 #define MAX_TOKEN_LENGTH 50000
-#define MAX_CHILDREN 10000
+#define MAX_CHILDREN 5000
 #define MAX_FUNCTIONS 5000
 
 typedef struct {
@@ -114,7 +114,7 @@ void print_analysis(AnalysisResult* result) {
         if (strlen(result->functions[i].params) > 0) {
             result->functions[i].params[strlen(result->functions[i].params)-2] = '\0';
         }
-        printf("  파라미터: %s\n", result->functions[i].params);
+        printf("  파라미터 명: %s\n", result->functions[i].params);
     }
     
     printf("\n• 전체 IF문 개수: %d\n", result->total_if_statements);

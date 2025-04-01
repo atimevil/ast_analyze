@@ -19,6 +19,7 @@ typedef struct {
 FunctionInfo* functions = NULL;
 int function_count = 0;
 
+// AST 노드의 깊이를 추적하기 위한 변수들
 int current_depth = 0;
 int func_def_depth = -1;
 int decl_depth = -1;
@@ -32,6 +33,7 @@ void analyze_ast_file(const char* filename) {
         return;
     }
     
+    // 함수 개수 먼저 확인
     char line[MAX_LINE_LENGTH];
     int func_count = 0;
     
@@ -40,6 +42,7 @@ void analyze_ast_file(const char* filename) {
             func_count++;
     }
     
+    // 메모리 할당
     functions = (FunctionInfo*)calloc(func_count, sizeof(FunctionInfo));
     function_count = func_count;
     
@@ -53,15 +56,18 @@ void analyze_ast_file(const char* filename) {
     bool in_param_type = false;
     
     while (fgets(line, sizeof(line), fp)) {
+        // 중괄호로 깊이 추적
         for (char* c = line; *c; c++) {
             if (*c == '{') current_depth++;
             if (*c == '}') current_depth--;
         }
         
+        // 함수 정의 시작
         if (strstr(line, "\"_nodetype\": \"FuncDef\"")) {
             current_func++;
             func_def_depth = current_depth;
             
+            // 함수 정보 초기화
             strcpy(functions[current_func].name, "");
             strcpy(functions[current_func].return_type, DEFAULT_UNKNOWN_TYPE);
             functions[current_func].param_count = 0;
@@ -71,7 +77,9 @@ void analyze_ast_file(const char* filename) {
             continue;
         }
         
+        // 현재 함수 내부에 있는지 확인
         if (current_func >= 0 && current_depth > func_def_depth) {
+            // 함수 이름 추출 (Decl -> name 패턴)
             if (strstr(line, "\"name\": \"") && functions[current_func].name[0] == '\0') {
                 char* start = strstr(line, "\"name\": \"") + 9;
                 char* end = strchr(start, '\"');
@@ -82,6 +90,7 @@ void analyze_ast_file(const char* filename) {
                 }
             }
             
+            // 리턴 타입 추출 시도
             if (strstr(line, "\"type\": \"") && 
                 strcmp(functions[current_func].return_type, DEFAULT_UNKNOWN_TYPE) == 0) {
                 char* start = strstr(line, "\"type\": \"") + 9;
@@ -93,12 +102,15 @@ void analyze_ast_file(const char* filename) {
                 }
             }
             
+            // 파라미터 처리
             if (strstr(line, "\"params\":")) {
                 param_list_depth = current_depth;
                 continue;
             }
             
+            // 파라미터 내부에 있는지 확인
             if (param_list_depth > 0 && current_depth > param_list_depth) {
+                // 새 파라미터 발견
                 if (strstr(line, "\"_nodetype\": \"Decl\"")) {
                     current_param = functions[current_func].param_count++;
                     if (current_param < 20) {
@@ -107,6 +119,7 @@ void analyze_ast_file(const char* filename) {
                     }
                 }
                 
+                // 파라미터 이름 추출
                 if (current_param >= 0 && current_param < 20) {
                     if (strstr(line, "\"name\": \"") && 
                         functions[current_func].param_names[current_param][0] == '\0') {
@@ -119,6 +132,7 @@ void analyze_ast_file(const char* filename) {
                         }
                     }
                     
+                    // 파라미터 타입 추출 시도
                     if (strstr(line, "\"names\": [\"") && 
                         strcmp(functions[current_func].param_types[current_param], DEFAULT_UNKNOWN_TYPE) == 0) {
                         char* start = strstr(line, "\"names\": [\"") + 11;
@@ -132,11 +146,13 @@ void analyze_ast_file(const char* filename) {
                 }
             }
             
+            // If 문 카운팅
             if (strstr(line, "\"_nodetype\": \"If\"")) {
                 functions[current_func].if_count++;
             }
         }
         
+        // 깊이가 함수 정의 수준 이하로 내려가면 함수 처리 종료
         if (current_func >= 0 && func_def_depth >= 0 && current_depth <= func_def_depth) {
             func_def_depth = -1;
             param_list_depth = -1;
@@ -161,4 +177,9 @@ int main() {
                    functions[i].param_names[j]);
         }
         
-        printf("   - 조건문 수
+        printf("   - 조건문 수: %d\n\n", functions[i].if_count);
+    }
+    
+    free(functions);
+    return 0;
+}

@@ -87,6 +87,7 @@ void analyze_ast(FILE *file) {
             memset(&functions[current_func], 0, sizeof(FunctionInfo));
             strcpy(functions[current_func].name, "unknown");
             strcpy(functions[current_func].return_type, "unknown");
+            brace_level_stack[brace_level] = FUNC_DEF;
         }
         
         if (in_func_def && strstr(line, "\"_nodetype\": \"FuncDecl\"")) {
@@ -94,12 +95,12 @@ void analyze_ast(FILE *file) {
         }
         
         if (in_func_def && strstr(line, "\"name\":")) {
-            char name[MAX_NAME_LENGTH] = {0};
-            extract_value(line, "\"name\":", name, MAX_NAME_LENGTH);
-            
-            if (name[0] != '\0' && strcmp(functions[current_func].name, "unknown") == 0) {
-                strcpy(functions[current_func].name, name);
-            }
+            char *decl_start = strstr(line, "\"decl\":");
+        if (decl_start) {
+            extract_value(decl_start, "\"name\":", functions[current_func].name, MAX_NAME_LENGTH);
+        } else {
+            extract_value(line, "\"name\":", functions[current_func].name, MAX_NAME_LENGTH);
+        }
         }
         
         if (in_func_def && in_func_decl && strstr(line, "\"names\": [")) {

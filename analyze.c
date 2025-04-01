@@ -145,18 +145,22 @@ Parameter** extract_function_parameters(const char* func_start, int* param_count
     return parameters;
 }
 
-int count_if_conditions(const char* json_string) {
+int count_if_conditions(const char* func_start) {
     int count = 0;
     const char* if_keyword = "\"If\"";
-    const char* ptr = json_string;
+    const char* ptr = func_start;
     
-    while ((ptr = strstr(ptr, if_keyword)) != NULL) {
+    const char* func_end = strchr(ptr, '}');
+    if (!func_end) return 0; 
+
+    while ((ptr = strstr(ptr, if_keyword)) != NULL && ptr < func_end) {
         count++;
         ptr++;
     }
     
     return count;
 }
+
 
 int main() {
     FILE* file = fopen("ast.json", "r");

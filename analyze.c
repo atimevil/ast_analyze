@@ -84,7 +84,7 @@ Parameter** extract_function_parameters(const char* func_start, int* param_count
     params_pos += strlen(params_keyword);
     while (*params_pos == ' ' || *params_pos == '[') params_pos++;
     
-    Parameter** parameters = (Parameter**)malloc(10 * sizeof(Parameter*));  
+    Parameter** parameters = (Parameter**)malloc(10 * sizeof(Parameter*));
     
     *param_count = 0;
     while (*params_pos != ']') {
@@ -119,6 +119,7 @@ Parameter** extract_function_parameters(const char* func_start, int* param_count
         (*param_count)++;
         
         params_pos = strchr(params_pos, '}');
+        if (!params_pos) break;
         params_pos++;
     }
     
@@ -144,7 +145,7 @@ int main() {
         printf("파일을 열 수 없습니다.\n");
         return 1;
     }
-    
+
     fseek(file, 0, SEEK_END);
     long file_size = ftell(file);
     rewind(file);
@@ -187,7 +188,7 @@ int main() {
         
         printf("- if 조건문 개수: %d\n", functions[i].if_condition_count);
     }
-
+    
     for (int i = 0; i < total_functions; i++) {
         free_function_info(&functions[i]);
     }

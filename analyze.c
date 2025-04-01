@@ -2,216 +2,197 @@
 #include <stdlib.h>
 #include <string.h>
 
-// 기본 용량
-#define INITIAL_CAPACITY_FUNCTIONS 10
-#define INITIAL_CAPACITY_CHILDREN 10
-#define MAX_TOKEN_LENGTH 5000
+typedef struct {
+    char* name;
+    char* type;
+} Parameter;
 
 typedef struct {
-    char name[MAX_TOKEN_LENGTH];
-    char return_type[MAX_TOKEN_LENGTH];
-    char params[MAX_TOKEN_LENGTH];
+    char* name;
+    char* return_type;
+    Parameter** parameters;
+    int parameter_count;
+    int if_condition_count;
 } FunctionInfo;
 
-typedef struct {
-    int total_functions;
-    int capacity_functions;
-    FunctionInfo* functions;
-    int total_if_statements;
-} AnalysisResult;
-
-typedef struct Node {
-    char type[MAX_TOKEN_LENGTH];
-    char name[MAX_TOKEN_LENGTH];
-    char value[MAX_TOKEN_LENGTH];
-    struct Node** children;
-    int child_count;
-    int capacity_children;
-} Node;
-
-// Node 구조체 초기화
-Node* create_node() {
-    Node* node = (Node*)malloc(sizeof(Node));
-    node->child_count = 0;
-    node->capacity_children = INITIAL_CAPACITY_CHILDREN;
-    node->children = (Node**)malloc(node->capacity_children * sizeof(Node*));
-    return node;
-}
-
-// Node에 자식 노드 추가
-void add_child(Node* node, Node* child) {
-    if (node->child_count >= node->capacity_children) {
-        node->capacity_children *= 2;
-        node->children = realloc(node->children, node->capacity_children * sizeof(Node*));
+void free_function_info(FunctionInfo* info) {
+    if (info == NULL) return;
+    
+    free(info->name);
+    free(info->return_type);
+    
+    for (int i = 0; i < info->parameter_count; i++) {
+        free(info->parameters[i]->name);
+        free(info->parameters[i]->type);
+        free(info->parameters[i]);
     }
-    node->children[node->child_count++] = child;
+    free(info->parameters);
 }
 
-// AnalysisResult 구조체 초기화
-void init_analysis_result(AnalysisResult* result) {
-    result->total_functions = 0;
-    result->capacity_functions = INITIAL_CAPACITY_FUNCTIONS;
-    result->functions = (FunctionInfo*)malloc(result->capacity_functions * sizeof(FunctionInfo));
-    result->total_if_statements = 0;
-}
-
-// AnalysisResult에 함수 정보 추가
-void add_function(AnalysisResult* result, const char* name, const char* return_type, const char* params) {
-    if (result->total_functions >= result->capacity_functions) {
-        result->capacity_functions *= 2;
-        result->functions = realloc(result->functions, result->capacity_functions * sizeof(FunctionInfo));
+int count_functions(const char* json_string) {
+    int count = 0;
+    const char* func_keyword = "\"FuncDef\"";
+    const char* ptr = json_string;
+    
+    while ((ptr = strstr(ptr, func_keyword)) != NULL) {
+        count++;
+        ptr++;
     }
     
-    strcpy(result->functions[result->total_functions].name, name);
-    strcpy(result->functions[result->total_functions].return_type, return_type);
-    strcpy(result->functions[result->total_functions].params, params);
-    result->total_functions++;
+    return count;
 }
 
-// 노드에서 값을 추출하는 함수
-void extract_value(char* start, char* dest) {
-    char* colon = strchr(start, ':');
-    if (!colon) return;
+char* extract_function_return_type(const char* func_start) {
+    const char* return_type_keyword = "\"type\":";
+    const char* return_type_pos = strstr(func_start, return_type_keyword);
+    if (!return_type_pos) return strdup("Unknown");
     
-    char* quote_open = strchr(colon, '"');
-    if (!quote_open) return;
+    return_type_pos += strlen(return_type_keyword);
+    while (*return_type_pos == ' ' || *return_type_pos == '\"') return_type_pos++;
     
-    char* quote_close = strchr(quote_open + 1, '"');
-    if (!quote_close) return;
-
-    strncpy(dest, quote_open + 1, quote_close - quote_open - 1);
-    dest[quote_close - quote_open - 1] = '\0';
+    const char* end_pos = strchr(return_type_pos, '\"');
+    int len = end_pos - return_type_pos;
+    char* return_type = (char*)malloc(len + 1);
+    strncpy(return_type, return_type_pos, len);
+    return_type[len] = '\0';
+    
+    return return_type;
 }
 
-// JSON 파일에서 노드 정보를 읽어오는 함수
-void parse_node(FILE* file, Node* node) {
-    char line[MAX_TOKEN_LENGTH];
-    while (fgets(line, sizeof(line), file)) {
-        char* key_pos;
-        if ((key_pos = strstr(line, "\"_nodetype\""))) {
-            extract_value(key_pos, node->type);
-        } else if ((key_pos = strstr(line, "\"name\""))) {
-            extract_value(key_pos, node->name);
-        } else if ((key_pos = strstr(line, "\"value\""))) {
-            extract_value(key_pos, node->value);
-        } else if (strstr(line, "{")) {
-            Node* child = create_node();
-            parse_node(file, child);
-            add_child(node, child);
-        } else if (strstr(line, "}")) {
-            return;
-        }
-    }
+char* extract_function_name(const char* func_start) {
+    const char* name_keyword = "\"name\":";
+    const char* name_pos = strstr(func_start, name_keyword);
+    if (!name_pos) return strdup("Unknown");
+    
+    name_pos += strlen(name_keyword);
+    while (*name_pos == ' ' || *name_pos == '\"') name_pos++;
+    
+    const char* end_pos = strchr(name_pos, '\"');
+    int len = end_pos - name_pos;
+    char* name = (char*)malloc(len + 1);
+    strncpy(name, name_pos, len);
+    name[len] = '\0';
+    
+    return name;
 }
 
-// AST를 분석하는 함수
-void analyze_ast(Node* node, AnalysisResult* result, int in_function) {
-    if (strcmp(node->type, "FuncDecl") == 0) {
-        char name[MAX_TOKEN_LENGTH] = "";
-        char return_type[MAX_TOKEN_LENGTH] = "";
-        char params[MAX_TOKEN_LENGTH] = "";
-        
-        strcpy(name, node->name);
-        
-        for (int i = 0; i < node->child_count; i++) {
-            Node* child = node->children[i];
-            if (strcmp(child->type, "Type") == 0) {
-                strcpy(return_type, child->name);
-                break;
-            }
+Parameter** extract_function_parameters(const char* func_start, int* param_count) {
+    const char* params_keyword = "\"params\":";
+    const char* params_pos = strstr(func_start, params_keyword);
+    if (!params_pos) return NULL;
+    
+    params_pos += strlen(params_keyword);
+    while (*params_pos == ' ' || *params_pos == '[') params_pos++;
+    
+    Parameter** parameters = (Parameter**)malloc(10 * sizeof(Parameter*));  
+    
+    *param_count = 0;
+    while (*params_pos != ']') {
+        if (*param_count >= 10) {
+            parameters = realloc(parameters, (*param_count + 10) * sizeof(Parameter*)); 
         }
         
-        for (int i = 0; i < node->child_count; i++) {
-            Node* child = node->children[i];
-            if (strcmp(child->type, "Param") == 0) {
-                char type[MAX_TOKEN_LENGTH] = "";
-                for (int j = 0; j < child->child_count; j++) {
-                    if (strcmp(child->children[j]->type, "Type") == 0) {
-                        strcpy(type, child->children[j]->name);
-                        break;
-                    }
-                }
-                strcat(params, type);
-                strcat(params, " ");
-                strcat(params, child->name);
-                strcat(params, ", ");
-            }
-        }
+        parameters[*param_count] = (Parameter*)malloc(sizeof(Parameter));
         
-        if (strlen(params) > 2) {
-            params[strlen(params) - 2] = '\0'; // 마지막 ", " 제거
-        }
+        const char* param_type_keyword = "\"type\":";
+        const char* param_type_pos = strstr(params_pos, param_type_keyword);
+        param_type_pos += strlen(param_type_keyword);
+        while (*param_type_pos == ' ' || *param_type_pos == '\"') param_type_pos++;
         
-        add_function(result, name, return_type, params);
-        in_function = 1;
+        const char* end_pos = strchr(param_type_pos, '\"');
+        int len = end_pos - param_type_pos;
+        parameters[*param_count]->type = (char*)malloc(len + 1);
+        strncpy(parameters[*param_count]->type, param_type_pos, len);
+        parameters[*param_count]->type[len] = '\0';
+        
+        const char* param_name_keyword = "\"name\":";
+        const char* param_name_pos = strstr(params_pos, param_name_keyword);
+        param_name_pos += strlen(param_name_keyword);
+        while (*param_name_pos == ' ' || *param_name_pos == '\"') param_name_pos++;
+        
+        end_pos = strchr(param_name_pos, '\"');
+        len = end_pos - param_name_pos;
+        parameters[*param_count]->name = (char*)malloc(len + 1);
+        strncpy(parameters[*param_count]->name, param_name_pos, len);
+        parameters[*param_count]->name[len] = '\0';
+        
+        (*param_count)++;
+        
+        params_pos = strchr(params_pos, '}');
+        params_pos++;
     }
     
-    if (strcmp(node->type, "If") == 0) {
-        result->total_if_statements++;
-    }
-    
-    for (int i = 0; i < node->child_count; i++) {
-        analyze_ast(node->children[i], result, in_function);
-    }
+    return parameters;
 }
 
-// 분석 결과를 출력하는 함수
-void print_analysis(AnalysisResult* result) {
-    printf("\n=== AST 분석 결과 ===\n");
-    printf("• 전체 함수 개수: %d\n", result->total_functions);
+int count_if_conditions(const char* json_string) {
+    int count = 0;
+    const char* if_keyword = "\"If\"";
+    const char* ptr = json_string;
     
-    for (int i = 0; i < result->total_functions; i++) {
-        printf("\n[함수 %d]\n", i+1);
-        printf("  이름: %s\n", result->functions[i].name);
-        printf("  반환 타입: %s\n", result->functions[i].return_type);
-        printf("  파라미터 명: %s\n", result->functions[i].params);
+    while ((ptr = strstr(ptr, if_keyword)) != NULL) {
+        count++;
+        ptr++;
     }
     
-    printf("\n• 전체 IF문 개수: %d\n", result->total_if_statements);
-}
-
-// 노드를 출력하는 함수
-void print_node(Node* node, int depth) {
-    for (int i = 0; i < depth; i++) printf("  ");
-    printf("Type: %s", node->type);
-    if (strlen(node->name) > 0) printf(", Name: %s", node->name);
-    if (strlen(node->value) > 0) printf(", Value: %s", node->value);
-    printf("\n");
-
-    for (int i = 0; i < node->child_count; i++) {
-        print_node(node->children[i], depth + 1);
-    }
-}
-
-// 메모리 해제 함수
-void free_node(Node* node) {
-    for (int i = 0; i < node->child_count; i++) {
-        free_node(node->children[i]);
-    }
-    free(node->children);
-    free(node);
+    return count;
 }
 
 int main() {
-    FILE* file = fopen("ast.json", "rb");
+    FILE* file = fopen("ast.json", "r");
     if (!file) {
-        printf("Failed to open file\n");
+        printf("파일을 열 수 없습니다.\n");
         return 1;
     }
-
-    Node* root = create_node();
-    parse_node(file, root);
+    
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    rewind(file);
+    
+    char* json_string = malloc(file_size + 1);
+    fread(json_string, 1, file_size, file);
+    json_string[file_size] = '\0';
     fclose(file);
+    
+    int total_functions = count_functions(json_string);
+    printf("총 함수 개수: %d\n", total_functions);
+    
+    FunctionInfo* functions = malloc(total_functions * sizeof(FunctionInfo));
+    
+    const char* func_start = json_string;
+    int func_index = 0;
+    
+    while ((func_start = strstr(func_start, "\"FuncDef\"")) != NULL) {
+        functions[func_index].return_type = extract_function_return_type(func_start);
+        functions[func_index].name = extract_function_name(func_start);
+        functions[func_index].parameters = extract_function_parameters(func_start, &functions[func_index].parameter_count);
+        functions[func_index].if_condition_count = count_if_conditions(func_start);
+        
+        func_index++;
+        func_start++;
+    }
+    
+    printf("\n함수 상세 정보:\n");
+    for (int i = 0; i < total_functions; i++) {
+        printf("\n함수 %d:\n", i+1);
+        printf("- 이름: %s\n", functions[i].name);
+        printf("- 리턴 타입: %s\n", functions[i].return_type);
+        
+        printf("- 파라미터:\n");
+        for (int j = 0; j < functions[i].parameter_count; j++) {
+            printf("  * 이름: %s, 타입: %s\n", 
+                   functions[i].parameters[j]->name, 
+                   functions[i].parameters[j]->type);
+        }
+        
+        printf("- if 조건문 개수: %d\n", functions[i].if_condition_count);
+    }
 
-    print_node(root, 0);
-    
-    AnalysisResult result;
-    init_analysis_result(&result);
-    analyze_ast(root, &result, 0);
-    print_analysis(&result);
-    
-    free_node(root);
-    free(result.functions);
+    for (int i = 0; i < total_functions; i++) {
+        free_function_info(&functions[i]);
+    }
+    free(functions);
+    free(json_string);
     
     return 0;
 }

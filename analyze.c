@@ -46,16 +46,22 @@ char* extract_function_return_type(const char* func_start) {
     const char* return_type_keyword = "\"type\":";
     const char* return_type_pos = strstr(func_start, return_type_keyword);
     if (!return_type_pos) return strdup("Unknown");
-    
+
     return_type_pos += strlen(return_type_keyword);
     while (*return_type_pos == ' ' || *return_type_pos == '\"') return_type_pos++;
-    
+
     const char* end_pos = strchr(return_type_pos, '\"');
+    if (!end_pos) return strdup("Unknown");
+
     int len = end_pos - return_type_pos;
-    char* return_type = (char*)malloc(len + 1);
+    char* return_type = malloc(len + 1);
+    if (!return_type) {
+        printf("메모리 할당 실패\n");
+        exit(1);
+    }
     strncpy(return_type, return_type_pos, len);
     return_type[len] = '\0';
-    
+
     return return_type;
 }
 
@@ -84,45 +90,58 @@ Parameter** extract_function_parameters(const char* func_start, int* param_count
     params_pos += strlen(params_keyword);
     while (*params_pos == ' ' || *params_pos == '[') params_pos++;
     
-    Parameter** parameters = (Parameter**)malloc(10 * sizeof(Parameter*));
-    
     *param_count = 0;
-    while (*params_pos != ']') {
-        if (*param_count >= 10) {
-            parameters = realloc(parameters, (*param_count + 10) * sizeof(Parameter*)); 
+    Parameter** parameters = NULL;
+
+    while (*params_pos != ']' && *params_pos != '\0') {
+        parameters = realloc(parameters, (*param_count + 1) * sizeof(Parameter*));
+        if (!parameters) {
+            printf("메모리 할당 실패\n");
+            exit(1);
         }
-        
-        parameters[*param_count] = (Parameter*)malloc(sizeof(Parameter));
-        
+
+        parameters[*param_count] = malloc(sizeof(Parameter));
+        if (!parameters[*param_count]) {
+            printf("메모리 할당 실패\n");
+            exit(1);
+        }
+
         const char* param_type_keyword = "\"type\":";
         const char* param_type_pos = strstr(params_pos, param_type_keyword);
+        if (!param_type_pos) break;
+
         param_type_pos += strlen(param_type_keyword);
         while (*param_type_pos == ' ' || *param_type_pos == '\"') param_type_pos++;
-        
+
         const char* end_pos = strchr(param_type_pos, '\"');
+        if (!end_pos) break;
+
         int len = end_pos - param_type_pos;
-        parameters[*param_count]->type = (char*)malloc(len + 1);
+        parameters[*param_count]->type = malloc(len + 1);
         strncpy(parameters[*param_count]->type, param_type_pos, len);
         parameters[*param_count]->type[len] = '\0';
-        
+
         const char* param_name_keyword = "\"name\":";
         const char* param_name_pos = strstr(params_pos, param_name_keyword);
+        if (!param_name_pos) break;
+
         param_name_pos += strlen(param_name_keyword);
         while (*param_name_pos == ' ' || *param_name_pos == '\"') param_name_pos++;
-        
+
         end_pos = strchr(param_name_pos, '\"');
+        if (!end_pos) break;
+
         len = end_pos - param_name_pos;
-        parameters[*param_count]->name = (char*)malloc(len + 1);
+        parameters[*param_count]->name = malloc(len + 1);
         strncpy(parameters[*param_count]->name, param_name_pos, len);
         parameters[*param_count]->name[len] = '\0';
-        
+
         (*param_count)++;
-        
         params_pos = strchr(params_pos, '}');
         if (!params_pos) break;
         params_pos++;
     }
-    
+
     return parameters;
 }
 

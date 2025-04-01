@@ -57,12 +57,7 @@ int main(int argc, char *argv[]) {
     int token_count = jsmn_parse(&parser, json, strlen(json), NULL, 0);
 
     if (token_count < 0) {
-    const char *err_msg[] = {
-        [JSMN_ERROR_NOMEM] = "Not enough tokens",
-        [JSMN_ERROR_INVAL] = "Invalid character",
-        [JSMN_ERROR_PART] = "Truncated JSON"
-    };
-    fprintf(stderr, "JSON 파싱 실패 (%s)\n", err_msg[-token_count]);
+    fprintf(stderr, "Failed to parse JSON: %d\n", token_count);
 }
     jsmntok_t *tokens = malloc(sizeof(jsmntok_t) * token_count);
     

@@ -5,7 +5,7 @@
 
 #define MAX_LINE 4096
 #define MAX_FUNCTIONS 100
-#define MAX_PARAMS 20
+#define MAX_PARAMS 100
 #define MAX_NAME_LENGTH 256
 
 typedef struct {
@@ -16,16 +16,6 @@ typedef struct {
     char param_names[MAX_PARAMS][MAX_NAME_LENGTH];
     int if_count;
 } FunctionInfo;
-
-typedef enum {
-    ROOT_NODE,
-    FUNC_DEF,
-    PARAM_LIST,
-    COMPOUND_STMT
-} NodeType;
-
-NodeType brace_level_stack[MAX_NESTING] = {ROOT_NODE};
-
 
 FunctionInfo functions[MAX_FUNCTIONS];
 int function_count = 0;
@@ -97,21 +87,19 @@ void analyze_ast(FILE *file) {
             memset(&functions[current_func], 0, sizeof(FunctionInfo));
             strcpy(functions[current_func].name, "unknown");
             strcpy(functions[current_func].return_type, "unknown");
-            brace_level_stack[brace_level] = FUNC_DEF;
         }
         
         if (in_func_def && strstr(line, "\"_nodetype\": \"FuncDecl\"")) {
             in_func_decl = 1;
-            current_decl_level = brace_level;
         }
         
         if (in_func_def && strstr(line, "\"name\":")) {
-            char *decl_start = strstr(line, "\"decl\":");
-        if (decl_start) {
-            extract_value(decl_start, "\"name\":", functions[current_func].name, MAX_NAME_LENGTH);
-        } else {
-            extract_value(line, "\"name\":", functions[current_func].name, MAX_NAME_LENGTH);
-        }
+            char name[MAX_NAME_LENGTH] = {0};
+            extract_value(line, "\"name\":", name, MAX_NAME_LENGTH);
+            
+            if (name[0] != '\0' && strcmp(functions[current_func].name, "unknown") == 0) {
+                strcpy(functions[current_func].name, name);
+            }
         }
         
         if (in_func_def && in_func_decl && strstr(line, "\"names\": [")) {
@@ -164,14 +152,6 @@ void analyze_ast(FILE *file) {
             in_func_decl = 0;
         }
     }
-}
-
-int is_valid_function_name(const char *name) {
-    return !strstr(name, "(") && 
-           !strstr(name, ")") &&
-           !isdigit(name[0]) &&
-           strcmp(name, "if") != 0 &&
-           strcmp(name, "while") != 0;
 }
 
 void print_results() {

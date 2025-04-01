@@ -70,14 +70,19 @@ void analyze_ast_file(const char* filename) {
         }
         
         if (in_func_def && strstr(line, "\"names\": [") && functions[current_func].return_type[0] == '\0') {
-            char* start = strstr(line, "\"names\": [");
-            start = strchr(start, '"', start - line + 10) + 1;
-            char* end = strchr(start, '"');
-            if (end != NULL) {
-                int len = end - start;
-                strncpy(functions[current_func].return_type, start, len);
-                functions[current_func].return_type[len] = '\0';
-            }
+        char* start = strstr(line, "\"names\": [");
+        if (start) {
+        start = strchr(start, '"') + 1; 
+        char* end = strchr(start, '"');
+        if (end) {
+            int len = end - start;
+            strncpy(functions[current_func].return_type, start, len);
+            functions[current_func].return_type[len] = '\0';
+        }
+        } else {
+            fprintf(stderr, "경고: 'names' 필드를 찾을 수 없습니다.\n");
+        }
+
         }
         
         if (in_func_def && strstr(line, "\"params\": [")) {
@@ -98,16 +103,19 @@ void analyze_ast_file(const char* filename) {
             }
         }
         
-        if (in_params && param_idx >= 0 && strstr(line, "\"names\": [")) {
-            char* start = strstr(line, "\"names\": [");
-            start = strchr(start, '"', start - line + 10) + 1;
-            char* end = strchr(start, '"');
-            if (end != NULL) {
-                int len = end - start;
-                strncpy(functions[current_func].param_types[param_idx], start, len);
-                functions[current_func].param_types[param_idx][len] = '\0';
-            }
+        if (in_params && strstr(line, "\"_nodetype\": \"Decl\"")) {
+        if (functions[current_func].param_count < 20) {
+            param_idx = functions[current_func].param_count++;
+        } else {
+            fprintf(stderr, "경고: 파라미터 개수 초과 (함수: %s)\n", functions[current_func].name);
+            param_idx = -1; 
         }
+    }
+
+        if (param_idx >= 0 && param_idx < 20) { 
+            strncpy(functions[current_func].param_types[param_idx], ...);
+        }
+
         
         if (in_params && strstr(line, "]")) {
             in_params = false;

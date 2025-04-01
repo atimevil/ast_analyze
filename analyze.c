@@ -112,9 +112,23 @@ void analyze_ast_file(const char* filename) {
         }
     }
 
-        if (param_idx >= 0 && param_idx < 20) { 
-            strncpy(functions[current_func].param_types[param_idx], ...);
+        if (param_idx >= 0 && param_idx < 20) {
+            char* start = strstr(line, "\"names\": [");
+            if (start) {
+                start = strchr(start, '"') + 1;
+                char* end = strchr(start, '"'); 
+            if (end) {
+                size_t len = end - start;
+                if (len < MAX_NAME_LENGTH) { 
+                    strncpy(functions[current_func].param_types[param_idx], start, len);
+                    functions[current_func].param_types[param_idx][len] = '\0'; 
+                } else {
+                fprintf(stderr, "경고: 파라미터 타입 길이가 너무 깁니다.\n");
+            }
         }
+    }
+}
+
 
         
         if (in_params && strstr(line, "]")) {

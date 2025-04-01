@@ -6,7 +6,7 @@
 #define MAX_FUNCTIONS 100
 #define MAX_PARAMS 100
 #define MAX_NAME_LENGTH 256
-#define MAX_TOKENS 1024
+#define MAX_TOKENS 25565
 
 typedef struct {
     char name[MAX_NAME_LENGTH];
@@ -54,14 +54,20 @@ int main(int argc, char *argv[]) {
     jsmn_parser parser;
     jsmn_init(&parser);
 
-    jsmntok_t tokens[MAX_TOKENS];
-    int token_count = jsmn_parse(&parser, json, strlen(json), tokens, MAX_TOKENS);
+    int token_count = jsmn_parse(&parser, json, strlen(json), NULL, 0);
 
     if (token_count < 0) {
-        fprintf(stderr, "Failed to parse JSON: %d\n", token_count);
-        free(json);
-        return 1;
-    }
+    const char *err_msg[] = {
+        [JSMN_ERROR_NOMEM] = "Not enough tokens",
+        [JSMN_ERROR_INVAL] = "Invalid character",
+        [JSMN_ERROR_PART] = "Truncated JSON"
+    };
+    fprintf(stderr, "JSON 파싱 실패 (%s)\n", err_msg[-token_count]);
+}
+    jsmntok_t *tokens = malloc(sizeof(jsmntok_t) * token_count);
+    
+    jsmn_init(&parser);
+    token_count = jsmn_parse(&parser, json, strlen(json), tokens, token_count);
 
     parse_json(json, tokens, token_count);
 

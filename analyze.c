@@ -17,6 +17,16 @@ typedef struct {
     int if_count;
 } FunctionInfo;
 
+typedef enum {
+    ROOT_NODE,
+    FUNC_DEF,
+    PARAM_LIST,
+    COMPOUND_STMT
+} NodeType;
+
+NodeType brace_level_stack[MAX_NESTING] = {ROOT_NODE};
+
+
 FunctionInfo functions[MAX_FUNCTIONS];
 int function_count = 0;
 
@@ -92,6 +102,7 @@ void analyze_ast(FILE *file) {
         
         if (in_func_def && strstr(line, "\"_nodetype\": \"FuncDecl\"")) {
             in_func_decl = 1;
+            current_decl_level = brace_level;
         }
         
         if (in_func_def && strstr(line, "\"name\":")) {
@@ -153,6 +164,14 @@ void analyze_ast(FILE *file) {
             in_func_decl = 0;
         }
     }
+}
+
+int is_valid_function_name(const char *name) {
+    return !strstr(name, "(") && 
+           !strstr(name, ")") &&
+           !isdigit(name[0]) &&
+           strcmp(name, "if") != 0 &&
+           strcmp(name, "while") != 0;
 }
 
 void print_results() {

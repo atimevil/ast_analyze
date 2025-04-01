@@ -17,10 +17,10 @@ typedef struct {
 
 void free_function_info(FunctionInfo* info) {
     if (info == NULL) return;
-    
+
     free(info->name);
     free(info->return_type);
-    
+
     for (int i = 0; i < info->parameter_count; i++) {
         free(info->parameters[i]->name);
         free(info->parameters[i]->type);
@@ -33,17 +33,17 @@ int count_functions(const char* json_string) {
     int count = 0;
     const char* func_keyword = "\"FuncDef\"";
     const char* ptr = json_string;
-    
+
     while ((ptr = strstr(ptr, func_keyword)) != NULL) {
         count++;
         ptr++;
     }
-    
+
     return count;
 }
 
 char* extract_function_return_type(const char* func_start) {
-    const char* return_type_keyword = "\"type\":";
+    const char* return_type_keyword = "\"type\":"; // JSON 형식에 맞게 수정
     const char* return_type_pos = strstr(func_start, return_type_keyword);
     if (!return_type_pos) return strdup("Unknown");
 
@@ -66,7 +66,7 @@ char* extract_function_return_type(const char* func_start) {
 }
 
 char* extract_function_name(const char* func_start) {
-    const char* name_keyword = "\"name\":";
+    const char* name_keyword = "\"name\":"; // JSON 형식에 맞게 수정
     const char* name_pos = strstr(func_start, name_keyword);
     if (!name_pos) return strdup("Unknown");
 
@@ -88,9 +88,8 @@ char* extract_function_name(const char* func_start) {
     return name;
 }
 
-
 Parameter** extract_function_parameters(const char* func_start, int* param_count) {
-    const char* params_keyword = "\"params\":";
+    const char* params_keyword = "\"params\":"; // JSON 형식에 맞게 수정
     const char* params_pos = strstr(func_start, params_keyword);
     if (!params_pos) {
         *param_count = 0;
@@ -104,7 +103,6 @@ Parameter** extract_function_parameters(const char* func_start, int* param_count
     *param_count = 0;
 
     while (*params_pos != ']' && *params_pos != '\0') {
-        // 메모리 재할당
         parameters = realloc(parameters, (*param_count + 1) * sizeof(Parameter*));
         if (!parameters) {
             printf("메모리 할당 실패!\n");
@@ -117,8 +115,7 @@ Parameter** extract_function_parameters(const char* func_start, int* param_count
             return NULL;
         }
 
-        // 파라미터 타입 추출
-        const char* param_type_keyword = "\"type\":";
+        const char* param_type_keyword = "\"type\":"; // JSON 형식에 맞게 수정
         const char* param_type_pos = strstr(params_pos, param_type_keyword);
         if (!param_type_pos) {
             printf("파라미터 타입을 찾을 수 없음!\n");
@@ -147,8 +144,7 @@ Parameter** extract_function_parameters(const char* func_start, int* param_count
         strncpy(parameters[*param_count]->type, param_type_pos, len);
         parameters[*param_count]->type[len] = '\0';
 
-        // 파라미터 이름 추출
-        const char* param_name_keyword = "\"name\":";
+        const char* param_name_keyword = "\"name\":"; // JSON 형식에 맞게 수정
         const char* param_name_pos = strstr(params_pos, param_name_keyword);
         if (!param_name_pos) {
             printf("파라미터 이름을 찾을 수 없음!\n");
@@ -189,23 +185,21 @@ Parameter** extract_function_parameters(const char* func_start, int* param_count
     return parameters;
 }
 
-
 int count_if_conditions(const char* func_start) {
     int count = 0;
-    const char* if_keyword = "\"If\"";
+    const char* if_keyword = "\"If\""; // JSON 형식에 맞게 수정
     const char* ptr = func_start;
-    
+
     const char* func_end = strchr(ptr, '}');
-    if (!func_end) return 0; 
+    if (!func_end) return 0;
 
     while ((ptr = strstr(ptr, if_keyword)) != NULL && ptr < func_end) {
         count++;
         ptr++;
     }
-    
+
     return count;
 }
-
 
 int main() {
     FILE* file = fopen("ast.json", "r");
@@ -217,52 +211,52 @@ int main() {
     fseek(file, 0, SEEK_END);
     long file_size = ftell(file);
     rewind(file);
-    
+
     char* json_string = malloc(file_size + 1);
     fread(json_string, 1, file_size, file);
     json_string[file_size] = '\0';
     fclose(file);
-    
+
     int total_functions = count_functions(json_string);
     printf("총 함수 개수: %d\n", total_functions);
-    
+
     FunctionInfo* functions = malloc(total_functions * sizeof(FunctionInfo));
-    
+
     const char* func_start = json_string;
     int func_index = 0;
-    
+
     while ((func_start = strstr(func_start, "\"FuncDef\"")) != NULL) {
         printf("\n[DEBUG] 새로운 함수 발견!\n");
         functions[func_index].return_type = extract_function_return_type(func_start);
         functions[func_index].name = extract_function_name(func_start);
         functions[func_index].parameters = extract_function_parameters(func_start, &functions[func_index].parameter_count);
         functions[func_index].if_condition_count = count_if_conditions(func_start);
-        
+
         func_index++;
         func_start++;
     }
-    
+
     printf("\n함수 상세 정보:\n");
     for (int i = 0; i < total_functions; i++) {
         printf("\n함수 %d:\n", i+1);
         printf("- 이름: %s\n", functions[i].name);
         printf("- 리턴 타입: %s\n", functions[i].return_type);
-        
+
         printf("- 파라미터:\n");
         for (int j = 0; j < functions[i].parameter_count; j++) {
-            printf("  * 이름: %s, 타입: %s\n", 
-                   functions[i].parameters[j]->name, 
+            printf("  * 이름: %s, 타입: %s\n",
+                   functions[i].parameters[j]->name,
                    functions[i].parameters[j]->type);
         }
-        
+
         printf("- if 조건문 개수: %d\n", functions[i].if_condition_count);
     }
-    
+
     for (int i = 0; i < total_functions; i++) {
         free_function_info(&functions[i]);
     }
     free(functions);
     free(json_string);
-    
+
     return 0;
 }

@@ -70,42 +70,56 @@ char* extract_function_return_type(const char* func_start) {
     return extract_value(names_pos, "");
 }
 
-Parameter** extract_function_parameters(const char* func_start, int* param_count) {
-    const char* params_key = "\"params\"";
-    const char* params_pos = strstr(func_start, params_key);
+Parameter** extract_function_parameters(cJSON* func_node, int* param_count) {
+    if (!func_node || !param_count) return NULL;
 
-    if (!params_pos) {
-        *param_count = 0;
-        return NULL;
-    }
-
-    const char* start = strchr(params_pos, '[');
-    if (!start) {
-        *param_count = 0;
-        return NULL;
-    }
-
-    Parameter** parameters = NULL;
     *param_count = 0;
+    Parameter** parameters = NULL;
 
-    const char* current = start + 1; 
-    while (*current && *current != ']') {
-        parameters = realloc(parameters, (*param_count + 1) * sizeof(Parameter*));
-        parameters[*param_count] = malloc(sizeof(Parameter));
+    cJSON* decl = cJSON_GetObjectItemCaseSensitive(func_node, "decl");
+    if (!decl) return NULL;
 
-        parameters[*param_count]->name = extract_value(current, "\"name\"");
-        parameters[*param_count]->type = extract_value(current, "\"type\"");
+    cJSON* type = cJSON_GetObjectItemCaseSensitive(decl, "type");
+    if (!type) return NULL;
 
-        (*param_count)++;
+    cJSON* args = cJSON_GetObjectItemCaseSensitive(type, "args");
+    if (!args) return NULL;
 
-        current = strchr(current, '}');
-        if (!current) break;
-        current++;
-        while (*current == ',' || *current == ' ') current++;
+    cJSON* params = cJSON_GetObjectItemCaseSensitive(args, "params");
+    if (!params || !cJSON_IsArray(params)) return NULL;
+
+    int size = cJSON_GetArraySize(params);
+    parameters = malloc(size * sizeof(Parameter*));
+
+    for (int i = 0; i < size; i++) {
+        cJSON* param = cJSON_GetArrayItem(params, i);
+        parameters[i] = malloc(sizeof(Parameter));
+
+        cJSON* param_type = cJSON_GetObjectItemCaseSensitive(param, "type");
+        cJSON* type_details = cJSON_GetObjectItemCaseSensitive(param_type, "type");
+        cJSON* type_names = cJSON_GetObjectItemCaseSensitive(type_details, "names");
+
+        if (type_names && cJSON_IsArray(type_names)) {
+            cJSON* type_name = cJSON_GetArrayItem(type_names, 0);
+            parameters[i]->type = strdup(type_name->valuestring);
+        } else {
+            printf("파라미터 타입을 찾을 수 없음!\n");
+            parameters[i]->type = strdup("Unknown");
+        }
+
+        cJSON* name = cJSON_GetObjectItemCaseSensitive(param, "name");
+        if (name) {
+            parameters[i]->name = strdup(name->valuestring);
+        } else {
+            printf("파라미터 이름을 찾을 수 없음!\n");
+            parameters[i]->name = strdup("Unknown");
+        }
     }
 
+    *param_count = size;
     return parameters;
 }
+
 
 int count_if_conditions(const char* func_start) {
     int count = 0;

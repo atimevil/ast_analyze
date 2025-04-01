@@ -187,6 +187,7 @@ int main() {
     int func_index = 0;
     
     while ((func_start = strstr(func_start, "\"FuncDef\"")) != NULL) {
+        printf("\n[DEBUG] 새로운 함수 발견!\n");
         functions[func_index].return_type = extract_function_return_type(func_start);
         functions[func_index].name = extract_function_name(func_start);
         functions[func_index].parameters = extract_function_parameters(func_start, &functions[func_index].parameter_count);

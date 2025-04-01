@@ -35,6 +35,11 @@ void analyze_ast_file(const char* filename) {
     }
     
     functions = (FunctionInfo*)calloc(func_count, sizeof(FunctionInfo));
+    if (functions == NULL) {
+        fprintf(stderr, "메모리 할당 실패\n");
+        fclose(fp);
+        return;
+    }
     function_count = func_count;
     
     rewind(fp);
@@ -55,14 +60,14 @@ void analyze_ast_file(const char* filename) {
             brace_level = 0;
             param_idx = -1;
             
-            functions[current_func].param_count = 0;
-            functions[current_func].if_count = 0;
+            // 함수 정보 초기화
+            memset(&functions[current_func], 0, sizeof(FunctionInfo));
         }
         
         if (in_func_def && strstr(line, "\"name\": \"")) {
             char* start = strstr(line, "\"name\": \"") + 9;
             char* end = strchr(start, '"');
-            if (end != NULL) {
+            if (end != NULL && functions[current_func].name[0] == '\0') {
                 int len = end - start;
                 strncpy(functions[current_func].name, start, len);
                 functions[current_func].name[len] = '\0';
@@ -70,66 +75,58 @@ void analyze_ast_file(const char* filename) {
         }
         
         if (in_func_def && strstr(line, "\"names\": [") && functions[current_func].return_type[0] == '\0') {
-        char* start = strstr(line, "\"names\": [");
-        if (start) {
-        start = strchr(start, '"') + 1; 
-        char* end = strchr(start, '"');
-        if (end) {
-            int len = end - start;
-            strncpy(functions[current_func].return_type, start, len);
-            functions[current_func].return_type[len] = '\0';
-        }
-        } else {
-            fprintf(stderr, "경고: 'names' 필드를 찾을 수 없습니다.\n");
-        }
-
+            char* start = strstr(line, "\"names\": [");
+            if (start) {
+                start = strchr(start, '"') + 1; 
+                char* end = strchr(start, '"');
+                if (end) {
+                    int len = end - start;
+                    strncpy(functions[current_func].return_type, start, len);
+                    functions[current_func].return_type[len] = '\0';
+                }
+            }
         }
         
         if (in_func_def && strstr(line, "\"params\": [")) {
             in_params = true;
+            param_idx = -1;
         }
         
         if (in_params && strstr(line, "\"_nodetype\": \"Decl\"")) {
-            param_idx = functions[current_func].param_count++;
+            if (functions[current_func].param_count < 20) {
+                param_idx = functions[current_func].param_count++;
+            } else {
+                fprintf(stderr, "경고: 파라미터 개수 초과 (함수: %s)\n", functions[current_func].name);
+                param_idx = -1;
+            }
         }
         
-        if (in_params && param_idx >= 0 && strstr(line, "\"name\": \"")) {
+        if (in_params && param_idx >= 0 && param_idx < 20 && strstr(line, "\"name\": \"")) {
             char* start = strstr(line, "\"name\": \"") + 9;
             char* end = strchr(start, '"');
-            if (end != NULL) {
+            if (end != NULL && functions[current_func].param_names[param_idx][0] == '\0') {
                 int len = end - start;
                 strncpy(functions[current_func].param_names[param_idx], start, len);
                 functions[current_func].param_names[param_idx][len] = '\0';
             }
         }
         
-        if (in_params && strstr(line, "\"_nodetype\": \"Decl\"")) {
-        if (functions[current_func].param_count < 20) {
-            param_idx = functions[current_func].param_count++;
-        } else {
-            fprintf(stderr, "경고: 파라미터 개수 초과 (함수: %s)\n", functions[current_func].name);
-            param_idx = -1; 
-        }
-    }
-
-        if (param_idx >= 0 && param_idx < 20) {
+        if (in_params && param_idx >= 0 && param_idx < 20 && strstr(line, "\"names\": [")) {
             char* start = strstr(line, "\"names\": [");
-            if (start) {
+            if (start && functions[current_func].param_types[param_idx][0] == '\0') {
                 start = strchr(start, '"') + 1;
                 char* end = strchr(start, '"'); 
-            if (end) {
-                size_t len = end - start;
-                if (len < MAX_NAME_LENGTH) { 
-                    strncpy(functions[current_func].param_types[param_idx], start, len);
-                    functions[current_func].param_types[param_idx][len] = '\0'; 
-                } else {
-                fprintf(stderr, "경고: 파라미터 타입 길이가 너무 깁니다.\n");
+                if (end) {
+                    size_t len = end - start;
+                    if (len < MAX_NAME_LENGTH) { 
+                        strncpy(functions[current_func].param_types[param_idx], start, len);
+                        functions[current_func].param_types[param_idx][len] = '\0'; 
+                    } else {
+                        fprintf(stderr, "경고: 파라미터 타입 길이가 너무 깁니다.\n");
+                    }
+                }
             }
         }
-    }
-}
-
-
         
         if (in_params && strstr(line, "]")) {
             in_params = false;

@@ -92,54 +92,91 @@ char* extract_function_name(const char* func_start) {
 Parameter** extract_function_parameters(const char* func_start, int* param_count) {
     const char* params_keyword = "\"params\":";
     const char* params_pos = strstr(func_start, params_keyword);
-    if (!params_pos) return NULL;
+    if (!params_pos) {
+        *param_count = 0;
+        return NULL;
+    }
 
     params_pos += strlen(params_keyword);
     while (*params_pos == ' ' || *params_pos == '[') params_pos++;
 
-    *param_count = 0;
     Parameter** parameters = NULL;
+    *param_count = 0;
 
     while (*params_pos != ']' && *params_pos != '\0') {
+        // 메모리 재할당
         parameters = realloc(parameters, (*param_count + 1) * sizeof(Parameter*));
         if (!parameters) {
-            printf("메모리 할당 실패\n");
-            exit(1);
+            printf("메모리 할당 실패!\n");
+            return NULL;
         }
 
         parameters[*param_count] = malloc(sizeof(Parameter));
         if (!parameters[*param_count]) {
-            printf("메모리 할당 실패\n");
-            exit(1);
+            printf("메모리 할당 실패!\n");
+            return NULL;
         }
 
+        // 파라미터 타입 추출
         const char* param_type_keyword = "\"type\":";
         const char* param_type_pos = strstr(params_pos, param_type_keyword);
-        if (!param_type_pos) break;
+        if (!param_type_pos) {
+            printf("파라미터 타입을 찾을 수 없음!\n");
+            free(parameters[*param_count]);
+            continue;
+        }
 
         param_type_pos += strlen(param_type_keyword);
         while (*param_type_pos == ' ' || *param_type_pos == '\"') param_type_pos++;
 
         const char* end_pos = strchr(param_type_pos, '\"');
-        if (!end_pos) break;
+        if (!end_pos) {
+            printf("파라미터 타입 종료 문자를 찾을 수 없음!\n");
+            free(parameters[*param_count]);
+            continue;
+        }
 
         int len = end_pos - param_type_pos;
-        parameters[*param_count]->type = malloc(len + 1);
+        parameters[*param_count]->type = (char*)malloc(len + 1);
+        if (!parameters[*param_count]->type) {
+            printf("파라미터 타입 메모리 할당 실패!\n");
+            free(parameters[*param_count]);
+            continue;
+        }
+
         strncpy(parameters[*param_count]->type, param_type_pos, len);
         parameters[*param_count]->type[len] = '\0';
 
+        // 파라미터 이름 추출
         const char* param_name_keyword = "\"name\":";
         const char* param_name_pos = strstr(params_pos, param_name_keyword);
-        if (!param_name_pos) break;
+        if (!param_name_pos) {
+            printf("파라미터 이름을 찾을 수 없음!\n");
+            free(parameters[*param_count]->type);
+            free(parameters[*param_count]);
+            continue;
+        }
 
         param_name_pos += strlen(param_name_keyword);
         while (*param_name_pos == ' ' || *param_name_pos == '\"') param_name_pos++;
 
         end_pos = strchr(param_name_pos, '\"');
-        if (!end_pos) break;
+        if (!end_pos) {
+            printf("파라미터 이름 종료 문자를 찾을 수 없음!\n");
+            free(parameters[*param_count]->type);
+            free(parameters[*param_count]);
+            continue;
+        }
 
         len = end_pos - param_name_pos;
-        parameters[*param_count]->name = malloc(len + 1);
+        parameters[*param_count]->name = (char*)malloc(len + 1);
+        if (!parameters[*param_count]->name) {
+            printf("파라미터 이름 메모리 할당 실패!\n");
+            free(parameters[*param_count]->type);
+            free(parameters[*param_count]);
+            continue;
+        }
+
         strncpy(parameters[*param_count]->name, param_name_pos, len);
         parameters[*param_count]->name[len] = '\0';
 

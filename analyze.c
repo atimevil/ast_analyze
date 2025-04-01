@@ -1,220 +1,163 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "jsmn.h"
+#include <stdbool.h>
 
-#define MAX_FUNCTIONS 100
-#define MAX_PARAMS 100
+#define MAX_LINE_LENGTH 2048
 #define MAX_NAME_LENGTH 256
-#define MAX_TOKENS 4096
 
 typedef struct {
-    char name[MAX_NAME_LENGTH];
-    char return_type[MAX_NAME_LENGTH];
-    int param_count;
-    char param_types[MAX_PARAMS][MAX_NAME_LENGTH];
-    char param_names[MAX_PARAMS][MAX_NAME_LENGTH];
-    int if_count;
+    char name[MAX_NAME_LENGTH];        
+    char return_type[MAX_NAME_LENGTH];   
+    int param_count;                    
+    char param_types[20][MAX_NAME_LENGTH]; 
+    char param_names[20][MAX_NAME_LENGTH]; 
+    int if_count;                      
 } FunctionInfo;
 
-FunctionInfo functions[MAX_FUNCTIONS];
+FunctionInfo* functions = NULL;
 int function_count = 0;
 
-void parse_json(const char *json, jsmntok_t *tokens, int token_count);
-void extract_functions(const char *json, jsmntok_t *tokens, int start, int end);
-void extract_string(const char *json, jsmntok_t *token, char *buffer, size_t max_len);
-int find_key(const char *json, jsmntok_t *tokens, int token_count, const char *key);
-
-int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <ast.json>\n", argv[0]);
-        return 1;
+void analyze_ast_file(const char* filename) {
+    FILE* fp = fopen(filename, "r");
+    if (fp == NULL) {
+        fprintf(stderr, "파일을 열 수 없습니다: %s\n", filename);
+        return;
     }
-
-    FILE *file = fopen(argv[1], "r");
-    if (!file) {
-        fprintf(stderr, "Error opening file: %s\n", argv[1]);
-        return 1;
+    
+    char line[MAX_LINE_LENGTH];
+    int func_count = 0;
+    
+    while (fgets(line, MAX_LINE_LENGTH, fp)) {
+        if (strstr(line, "\"_nodetype\": \"FuncDef\"")) {
+            func_count++;
+        }
     }
-
-    fseek(file, 0, SEEK_END);
-    long length = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    char *json = malloc(length + 1);
-    if (!json) {
-        fprintf(stderr, "Memory allocation error\n");
-        fclose(file);
-        return 1;
-    }
-
-    fread(json, 1, length, file);
-    json[length] = '\0';
-    fclose(file);
-
-    jsmn_parser parser;
-    jsmn_init(&parser);
-
-    jsmntok_t tokens[MAX_TOKENS];
-    int token_count = jsmn_parse(&parser, json, strlen(json), tokens, MAX_TOKENS);
-
-    if (token_count < 0) {
-        fprintf(stderr, "Failed to parse JSON: %d\n", token_count);
-        free(json);
-        return 1;
-    }
-
-    parse_json(json, tokens, token_count);
-
-    free(json);
-
-    printf("함수 개수: %d\n\n", function_count);
-    for (int i = 0; i < function_count; i++) {
-        printf("함수 이름: %s\n", functions[i].name);
-        printf("리턴 타입: %s\n", functions[i].return_type);
-
-        printf("파라미터: ");
-        if (functions[i].param_count == 0) {
-            printf("없음\n");
-        } else {
-            printf("\n");
-            for (int j = 0; j < functions[i].param_count; j++) {
-                printf("  - 타입: %s, 변수명: %s\n",
-                       functions[i].param_types[j], functions[i].param_names[j]);
+    
+    functions = (FunctionInfo*)calloc(func_count, sizeof(FunctionInfo));
+    function_count = func_count;
+    
+    rewind(fp);
+    
+    int current_func = -1;
+    bool in_func_def = false;
+    bool in_func_body = false;
+    bool in_params = false;
+    int brace_level = 0;
+    int param_idx = -1;
+    
+    while (fgets(line, MAX_LINE_LENGTH, fp)) {
+        if (strstr(line, "\"_nodetype\": \"FuncDef\"")) {
+            current_func++;
+            in_func_def = true;
+            in_func_body = false;
+            in_params = false;
+            brace_level = 0;
+            param_idx = -1;
+            
+            functions[current_func].param_count = 0;
+            functions[current_func].if_count = 0;
+        }
+        
+        if (in_func_def && strstr(line, "\"name\": \"")) {
+            char* start = strstr(line, "\"name\": \"") + 9;
+            char* end = strchr(start, '"');
+            if (end != NULL) {
+                int len = end - start;
+                strncpy(functions[current_func].name, start, len);
+                functions[current_func].name[len] = '\0';
             }
         }
-
-        printf("if 조건문 개수: %d\n\n", functions[i].if_count);
+        
+        if (in_func_def && strstr(line, "\"names\": [") && functions[current_func].return_type[0] == '\0') {
+            char* start = strstr(line, "\"names\": [");
+            start = strchr(start, '"', start - line + 10) + 1;
+            char* end = strchr(start, '"');
+            if (end != NULL) {
+                int len = end - start;
+                strncpy(functions[current_func].return_type, start, len);
+                functions[current_func].return_type[len] = '\0';
+            }
+        }
+        
+        if (in_func_def && strstr(line, "\"params\": [")) {
+            in_params = true;
+        }
+        
+        if (in_params && strstr(line, "\"_nodetype\": \"Decl\"")) {
+            param_idx = functions[current_func].param_count++;
+        }
+        
+        if (in_params && param_idx >= 0 && strstr(line, "\"name\": \"")) {
+            char* start = strstr(line, "\"name\": \"") + 9;
+            char* end = strchr(start, '"');
+            if (end != NULL) {
+                int len = end - start;
+                strncpy(functions[current_func].param_names[param_idx], start, len);
+                functions[current_func].param_names[param_idx][len] = '\0';
+            }
+        }
+        
+        if (in_params && param_idx >= 0 && strstr(line, "\"names\": [")) {
+            char* start = strstr(line, "\"names\": [");
+            start = strchr(start, '"', start - line + 10) + 1;
+            char* end = strchr(start, '"');
+            if (end != NULL) {
+                int len = end - start;
+                strncpy(functions[current_func].param_types[param_idx], start, len);
+                functions[current_func].param_types[param_idx][len] = '\0';
+            }
+        }
+        
+        if (in_params && strstr(line, "]")) {
+            in_params = false;
+        }
+        
+        if (in_func_def && strstr(line, "\"body\": {")) {
+            in_func_body = true;
+            brace_level = 1;
+        }
+        
+        if (in_func_body) {
+            for (char* c = line; *c; c++) {
+                if (*c == '{') brace_level++;
+                if (*c == '}') brace_level--;
+            }
+            
+            if (strstr(line, "\"_nodetype\": \"If\"")) {
+                functions[current_func].if_count++;
+            }
+            
+            if (brace_level <= 0) {
+                in_func_body = false;
+                in_func_def = false;
+            }
+        }
     }
+    
+    fclose(fp);
+}
 
+int main() {
+    analyze_ast_file("ast.json");
+    
+    printf("총 함수 개수: %d\n\n", function_count);
+    
+    for (int i = 0; i < function_count; i++) {
+        FunctionInfo* func = &functions[i];
+        
+        printf("함수 이름: %s\n", func->name);
+        printf("리턴 타입: %s\n", func->return_type);
+        printf("파라미터 개수: %d\n", func->param_count);
+        
+        for (int j = 0; j < func->param_count; j++) {
+            printf("  파라미터 %d: %s %s\n", j + 1, func->param_types[j], func->param_names[j]);
+        }
+        
+        printf("if 조건 개수: %d\n\n", func->if_count);
+    }
+    
+    free(functions);
+    
     return 0;
 }
-
-void parse_json(const char *json, jsmntok_t *tokens, int token_count) {
-    for (int i = 0; i < token_count; i++) {
-        if (tokens[i].type == JSMN_OBJECT && find_key(json, &tokens[i], token_count, "_nodetype") >= 0) {
-            int nodetype_index = find_key(json, &tokens[i], token_count, "_nodetype");
-            char nodetype[MAX_NAME_LENGTH] = {0};
-            extract_string(json, &tokens[nodetype_index + 1], nodetype, MAX_NAME_LENGTH);
-
-            if (strcmp(nodetype, "FuncDef") == 0) {
-                extract_functions(json, tokens, i + 1, tokens[i].end);
-            }
-        }
-    }
-}
-
-void extract_functions(const char *json, jsmntok_t *tokens, int start, int end) {
-    FunctionInfo func = {0};
-    strcpy(func.name, "unknown");
-    strcpy(func.return_type, "unknown");
-
-    for (int i = start; i < end; i++) {
-        if (tokens[i].type == JSMN_STRING && strncmp(json + tokens[i].start, "name", tokens[i].end - tokens[i].start) == 0) {
-            extract_string(json, &tokens[i + 1], func.name, MAX_NAME_LENGTH);
-        } else if (tokens[i].type == JSMN_STRING && strncmp(json + tokens[i].start, "return_type", tokens[i].end - tokens[i].start) == 0) {
-            extract_string(json, &tokens[i + 1], func.return_type, MAX_NAME_LENGTH);
-        } else if (tokens[i].type == JSMN_OBJECT && find_key(json, &tokens[i], end - start + 1, "_nodetype") >= 0) {
-            int sub_nodetype_index = find_key(json, &tokens[i], end - start + 1, "_nodetype");
-            char sub_nodetype[MAX_NAME_LENGTH] = {0};
-            extract_string(json, &tokens[sub_nodetype_index + 1], sub_nodetype, MAX_NAME_LENGTH);
-
-            if (strcmp(sub_nodetype, "If") == 0) {
-                func.if_count++;
-            }
-        }
-    }
-
-    functions[function_count++] = func;
-}
-
-void extract_string(const char *json, jsmntok_t *token, char *buffer, size_t max_len) {
-    size_t len = token->end - token->start;
-    if (len >= max_len) len = max_len - 1;
-
-    strncpy(buffer, json + token->start, len);
-    buffer[len] = '\0';
-}
-
-/* JSON 파서의 핵심 로직 (완전한 구현부) */
-int find_key(const char *json, jsmntok_t *tokens, int token_count, const char *key, int start) {
-    for (int i = start; i < token_count; i++) {
-        if (tokens[i].type == JSMN_STRING && 
-            strncmp(json + tokens[i].start, key, tokens[i].end - tokens[i].start) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-void extract_functions(const char *json, jsmntok_t *tokens, int token_count) {
-    for (int i = 0; i < token_count; i++) {
-        if (tokens[i].type == JSMN_OBJECT) {
-            int nodetype_idx = find_key(json, tokens, token_count, "_nodetype", i);
-            if (nodetype_idx == -1) continue;
-
-            char nodetype[32];
-            extract_string(json, &tokens[nodetype_idx + 1], nodetype, sizeof(nodetype));
-
-            if (strcmp(nodetype, "FuncDef") == 0) {
-                FunctionInfo func = {0};
-                
-                /* 함수 이름 추출 */
-                int decl_idx = find_key(json, tokens, token_count, "decl", i);
-                if (decl_idx != -1) {
-                    int name_idx = find_key(json, tokens, token_count, "name", decl_idx);
-                    if (name_idx != -1) {
-                        extract_string(json, &tokens[name_idx + 1], func.name, MAX_NAME_LENGTH);
-                    }
-                }
-
-                /* 반환 타입 추출 */
-                int func_decl_idx = find_key(json, tokens, token_count, "FuncDecl", i);
-                if (func_decl_idx != -1) {
-                    int type_idx = find_key(json, tokens, token_count, "type", func_decl_idx);
-                    if (type_idx != -1) {
-                        extract_string(json, &tokens[type_idx + 1], func.return_type, MAX_NAME_LENGTH);
-                    }
-                }
-
-                /* 매개변수 분석 */
-                int param_list_idx = find_key(json, tokens, token_count, "ParamList", i);
-                if (param_list_idx != -1) {
-                    int params_idx = find_key(json, tokens, token_count, "params", param_list_idx);
-                    if (params_idx != -1 && tokens[params_idx].type == JSMN_ARRAY) {
-                        for (int j = params_idx + 1; j < token_count; j++) {
-                            if (tokens[j].type == JSMN_OBJECT) {
-                                int param_type_idx = find_key(json, tokens, token_count, "type", j);
-                                int param_name_idx = find_key(json, tokens, token_count, "name", j);
-                                
-                                if (param_type_idx != -1) {
-                                    extract_string(json, &tokens[param_type_idx + 1], 
-                                                 func.param_types[func.param_count], MAX_NAME_LENGTH);
-                                }
-                                
-                                if (param_name_idx != -1) {
-                                    extract_string(json, &tokens[param_name_idx + 1], 
-                                                 func.param_names[func.param_count], MAX_NAME_LENGTH);
-                                }
-                                
-                                func.param_count++;
-                            }
-                            if (tokens[j].parent == param_list_idx) break;
-                        }
-                    }
-                }
-
-                /* if 문 카운팅 */
-                for (int j = i; j < token_count; j++) {
-                    if (tokens[j].parent == i && 
-                        find_key(json, tokens, token_count, "If", j) != -1) {
-                        func.if_count++;
-                    }
-                }
-
-                functions[function_count++] = func;
-            }
-        }
-    }
-}
-

@@ -136,51 +136,85 @@ void extract_string(const char *json, jsmntok_t *token, char *buffer, size_t max
     buffer[len] = '\0';
 }
 
-int find_key(const char *json, jsmntok_t *tokens, int token_count, const char *key, int start_idx) {
-    for (int i = start_idx; i < token_count; i++) {
-        jsmntok_t *t = &tokens[i];
-        if (t->type == JSMN_STRING && 
-            (t->end - t->start) == strlen(key) &&
-            strncmp(json + t->start, key, t->end - t->start) == 0) {
+/* JSON 파서의 핵심 로직 (완전한 구현부) */
+int find_key(const char *json, jsmntok_t *tokens, int token_count, const char *key, int start) {
+    for (int i = start; i < token_count; i++) {
+        if (tokens[i].type == JSMN_STRING && 
+            strncmp(json + tokens[i].start, key, tokens[i].end - tokens[i].start) == 0) {
             return i;
         }
     }
     return -1;
 }
 
-void extract_functions(const char *json, jsmntok_t *tokens, int func_start, int func_end) {
-    FunctionInfo func = {0};
-    
-    int decl_idx = find_key(json, tokens, func_end, "decl", func_start);
-    if (decl_idx != -1) {
-        int name_idx = find_key(json, tokens, func_end, "name", decl_idx);
-        if (name_idx != -1 && tokens[name_idx+1].type == JSMN_STRING) {
-            extract_string(json, &tokens[name_idx+1], func.name, MAX_NAME_LENGTH);
-        }
-    }
+void extract_functions(const char *json, jsmntok_t *tokens, int token_count) {
+    for (int i = 0; i < token_count; i++) {
+        if (tokens[i].type == JSMN_OBJECT) {
+            int nodetype_idx = find_key(json, tokens, token_count, "_nodetype", i);
+            if (nodetype_idx == -1) continue;
 
-    int func_decl_idx = find_key(json, tokens, func_end, "FuncDecl", func_start);
-    if (func_decl_idx != -1) {
-        int type_idx = find_key(json, tokens, func_end, "type", func_decl_idx);
-        if (type_idx != -1) {
-            int names_idx = find_key(json, tokens, func_end, "names", type_idx);
-            if (names_idx != -1 && tokens[names_idx+1].type == JSMN_ARRAY) {
-                extract_string(json, &tokens[names_idx+1], func.return_type, MAX_NAME_LENGTH);
-            }
-        }
-    }
+            char nodetype[32];
+            extract_string(json, &tokens[nodetype_idx + 1], nodetype, sizeof(nodetype));
 
-    int param_list_idx = find_key(json, tokens, func_end, "ParamList", func_start);
-    if (param_list_idx != -1) {
-        int params_idx = find_key(json, tokens, func_end, "params", param_list_idx);
-        if (params_idx != -1 && tokens[params_idx].type == JSMN_ARRAY) {
-            for (int i = params_idx + 1; i < func_end; i++) {
-                if (tokens[i].type == JSMN_OBJECT) {
-                    func.param_count++;
+            if (strcmp(nodetype, "FuncDef") == 0) {
+                FunctionInfo func = {0};
+                
+                /* 함수 이름 추출 */
+                int decl_idx = find_key(json, tokens, token_count, "decl", i);
+                if (decl_idx != -1) {
+                    int name_idx = find_key(json, tokens, token_count, "name", decl_idx);
+                    if (name_idx != -1) {
+                        extract_string(json, &tokens[name_idx + 1], func.name, MAX_NAME_LENGTH);
+                    }
                 }
+
+                /* 반환 타입 추출 */
+                int func_decl_idx = find_key(json, tokens, token_count, "FuncDecl", i);
+                if (func_decl_idx != -1) {
+                    int type_idx = find_key(json, tokens, token_count, "type", func_decl_idx);
+                    if (type_idx != -1) {
+                        extract_string(json, &tokens[type_idx + 1], func.return_type, MAX_NAME_LENGTH);
+                    }
+                }
+
+                /* 매개변수 분석 */
+                int param_list_idx = find_key(json, tokens, token_count, "ParamList", i);
+                if (param_list_idx != -1) {
+                    int params_idx = find_key(json, tokens, token_count, "params", param_list_idx);
+                    if (params_idx != -1 && tokens[params_idx].type == JSMN_ARRAY) {
+                        for (int j = params_idx + 1; j < token_count; j++) {
+                            if (tokens[j].type == JSMN_OBJECT) {
+                                int param_type_idx = find_key(json, tokens, token_count, "type", j);
+                                int param_name_idx = find_key(json, tokens, token_count, "name", j);
+                                
+                                if (param_type_idx != -1) {
+                                    extract_string(json, &tokens[param_type_idx + 1], 
+                                                 func.param_types[func.param_count], MAX_NAME_LENGTH);
+                                }
+                                
+                                if (param_name_idx != -1) {
+                                    extract_string(json, &tokens[param_name_idx + 1], 
+                                                 func.param_names[func.param_count], MAX_NAME_LENGTH);
+                                }
+                                
+                                func.param_count++;
+                            }
+                            if (tokens[j].parent == param_list_idx) break;
+                        }
+                    }
+                }
+
+                /* if 문 카운팅 */
+                for (int j = i; j < token_count; j++) {
+                    if (tokens[j].parent == i && 
+                        find_key(json, tokens, token_count, "If", j) != -1) {
+                        func.if_count++;
+                    }
+                }
+
+                functions[function_count++] = func;
             }
         }
     }
-
-    functions[function_count++] = func;
 }
+

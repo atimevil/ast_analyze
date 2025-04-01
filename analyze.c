@@ -1,205 +1,177 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+
+#define MAX_LINE 4096
+#define MAX_FUNCTIONS 100
+#define MAX_PARAMS 20
+#define MAX_NAME_LENGTH 256
 
 typedef struct {
-    char* name;
-    char* type;
-} Parameter;
-
-typedef struct {
-    char* name;
-    char* return_type;
-    Parameter** parameters;
-    int parameter_count;
-    int if_condition_count;
+    char name[MAX_NAME_LENGTH];
+    char return_type[MAX_NAME_LENGTH];
+    int param_count;
+    char param_types[MAX_PARAMS][MAX_NAME_LENGTH];
+    char param_names[MAX_PARAMS][MAX_NAME_LENGTH];
+    int if_count;
 } FunctionInfo;
 
-void free_function_info(FunctionInfo* info) {
-    if (info == NULL) return;
+FunctionInfo functions[MAX_FUNCTIONS];
+int function_count = 0;
 
-    free(info->name);
-    free(info->return_type);
+void analyze_ast(FILE *file);
+void print_results();
+void extract_value(const char *line, const char *key, char *value, size_t max_len);
 
-    for (int i = 0; i < info->parameter_count; i++) {
-        free(info->parameters[i]->name);
-        free(info->parameters[i]->type);
-        free(info->parameters[i]);
-    }
-    free(info->parameters);
-}
-
-char* extract_value(const char* json, const char* key) {
-    const char* key_pos = strstr(json, key);
-    if (!key_pos) return NULL;
-
-    const char* start = strchr(key_pos, ':');
-    if (!start) return NULL;
-
-    start++;
-    while (*start == ' ' || *start == '\"') start++; 
-
-    const char* end = strchr(start, '\"');
-    if (!end) end = strchr(start, ','); 
-
-    if (!end) return NULL;
-
-    size_t len = end - start;
-    char* value = malloc(len + 1);
-    strncpy(value, start, len);
-    value[len] = '\0';
-
-    return value;
-}
-
-char* extract_function_name(const char* func_start) {
-    return extract_value(func_start, "\"name\"");
-}
-
-char* extract_function_return_type(const char* func_start) {
-    const char* type_key = "\"type\"";
-    const char* type_pos = strstr(func_start, type_key);
-
-    if (!type_pos) return strdup("Unknown");
-
-    const char* names_key = "\"names\"";
-    const char* names_pos = strstr(type_pos, names_key);
-
-    if (!names_pos) return strdup("Unknown");
-
-    return extract_value(names_pos, "");
-}
-
-Parameter** extract_function_parameters(cJSON* func_node, int* param_count) {
-    if (!func_node || !param_count) return NULL;
-
-    *param_count = 0;
-    Parameter** parameters = NULL;
-
-    cJSON* decl = cJSON_GetObjectItemCaseSensitive(func_node, "decl");
-    if (!decl) return NULL;
-
-    cJSON* type = cJSON_GetObjectItemCaseSensitive(decl, "type");
-    if (!type) return NULL;
-
-    cJSON* args = cJSON_GetObjectItemCaseSensitive(type, "args");
-    if (!args) return NULL;
-
-    cJSON* params = cJSON_GetObjectItemCaseSensitive(args, "params");
-    if (!params || !cJSON_IsArray(params)) return NULL;
-
-    int size = cJSON_GetArraySize(params);
-    parameters = malloc(size * sizeof(Parameter*));
-
-    for (int i = 0; i < size; i++) {
-        cJSON* param = cJSON_GetArrayItem(params, i);
-        parameters[i] = malloc(sizeof(Parameter));
-
-        cJSON* param_type = cJSON_GetObjectItemCaseSensitive(param, "type");
-        cJSON* type_details = cJSON_GetObjectItemCaseSensitive(param_type, "type");
-        cJSON* type_names = cJSON_GetObjectItemCaseSensitive(type_details, "names");
-
-        if (type_names && cJSON_IsArray(type_names)) {
-            cJSON* type_name = cJSON_GetArrayItem(type_names, 0);
-            parameters[i]->type = strdup(type_name->valuestring);
-        } else {
-            printf("파라미터 타입을 찾을 수 없음!\n");
-            parameters[i]->type = strdup("Unknown");
-        }
-
-        cJSON* name = cJSON_GetObjectItemCaseSensitive(param, "name");
-        if (name) {
-            parameters[i]->name = strdup(name->valuestring);
-        } else {
-            printf("파라미터 이름을 찾을 수 없음!\n");
-            parameters[i]->name = strdup("Unknown");
-        }
-    }
-
-    *param_count = size;
-    return parameters;
-}
-
-
-int count_if_conditions(const char* func_start) {
-    int count = 0;
-    const char* current = func_start;
-
-    while ((current = strstr(current, "\"If\"")) != NULL) {
-        count++;
-        current++;
-    }
-
-    return count;
-}
-
-int count_functions(const char* json_string) {
-    int count = 0;
-    const char* current = json_string;
-
-    while ((current = strstr(current, "\"FuncDef\"")) != NULL) {
-        count++;
-        current++;
-    }
-
-    return count;
-}
-
-int main() {
-    FILE* file = fopen("ast.json", "r");
-    if (!file) {
-        printf("파일을 열 수 없습니다.\n");
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <ast.json>\n", argv[0]);
         return 1;
     }
-
-    fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
-    rewind(file);
-
-    char* json_string = malloc(file_size + 1);
-    fread(json_string, 1, file_size, file);
-    json_string[file_size] = '\0';
-    fclose(file);
-
-    int total_functions = count_functions(json_string);
-    printf("총 함수 개수: %d\n", total_functions);
-
-    FunctionInfo* functions = malloc(total_functions * sizeof(FunctionInfo));
     
-    const char* func_start = json_string;
-    int func_index = 0;
-
-    while ((func_start = strstr(func_start, "\"FuncDef\"")) != NULL) {
-        functions[func_index].name = extract_function_name(func_start);
-        functions[func_index].return_type = extract_function_return_type(func_start);
-        functions[func_index].parameters = extract_function_parameters(func_start, &functions[func_index].parameter_count);
-        functions[func_index].if_condition_count = count_if_conditions(func_start);
-
-        func_index++;
-        func_start++;
+    FILE *file = fopen(argv[1], "r");
+    if (!file) {
+        fprintf(stderr, "Error opening file: %s\n", argv[1]);
+        return 1;
     }
-
-    printf("\n함수 상세 정보:\n");
-    for (int i = 0; i < total_functions; i++) {
-        printf("\n함수 %d:\n", i + 1);
-        printf("- 이름: %s\n", functions[i].name);
-        printf("- 리턴 타입: %s\n", functions[i].return_type);
-
-        printf("- 파라미터:\n");
-        for (int j = 0; j < functions[i].parameter_count; j++) {
-            printf("  * 이름: %s, 타입: %s\n",
-                   functions[i].parameters[j]->name,
-                   functions[i].parameters[j]->type);
-        }
-
-        printf("- if 조건문 개수: %d\n", functions[i].if_condition_count);
-    }
-
-    for (int i = 0; i < total_functions; i++) {
-        free_function_info(&functions[i]);
-    }
-    free(functions);
-    free(json_string);
-
+    
+    analyze_ast(file);
+    fclose(file);
+    
+    print_results();
+    
     return 0;
+}
+
+void extract_value(const char *line, const char *key, char *value, size_t max_len) {
+    char *key_pos = strstr(line, key);
+    if (!key_pos) return;
+    
+    char *value_start = key_pos + strlen(key);
+    while (*value_start && (*value_start == ' ' || *value_start == ':' || *value_start == '"')) value_start++;
+    
+    char *value_end = value_start;
+    while (*value_end && *value_end != '"' && *value_end != ',' && *value_end != '}' && *value_end != ']') value_end++;
+    
+    size_t len = value_end - value_start;
+    if (len >= max_len) len = max_len - 1;
+    
+    strncpy(value, value_start, len);
+    value[len] = '\0';
+}
+
+void analyze_ast(FILE *file) {
+    char line[MAX_LINE];
+    int brace_level = 0;
+    int in_func_def = 0;
+    int current_func = -1;
+    int in_func_decl = 0;
+    int in_param_list = 0;
+    int current_param = -1;
+    
+    while (fgets(line, MAX_LINE, file)) {
+        for (int i = 0; line[i]; i++) {
+            if (line[i] == '{') brace_level++;
+            if (line[i] == '}') {
+                brace_level--;
+                if (brace_level == 0 && in_func_def) {
+                    in_func_def = 0;
+                }
+            }
+        }
+        
+        if (strstr(line, "\"_nodetype\": \"FuncDef\"")) {
+            in_func_def = 1;
+            current_func = function_count++;
+            memset(&functions[current_func], 0, sizeof(FunctionInfo));
+            strcpy(functions[current_func].name, "unknown");
+            strcpy(functions[current_func].return_type, "unknown");
+        }
+        
+        if (in_func_def && strstr(line, "\"_nodetype\": \"FuncDecl\"")) {
+            in_func_decl = 1;
+        }
+        
+        if (in_func_def && strstr(line, "\"name\":")) {
+            char name[MAX_NAME_LENGTH] = {0};
+            extract_value(line, "\"name\":", name, MAX_NAME_LENGTH);
+            
+            if (name[0] != '\0' && strcmp(functions[current_func].name, "unknown") == 0) {
+                strcpy(functions[current_func].name, name);
+            }
+        }
+        
+        if (in_func_def && in_func_decl && strstr(line, "\"names\": [")) {
+            char type[MAX_NAME_LENGTH] = {0};
+            extract_value(line, "\"names\": [", type, MAX_NAME_LENGTH);
+            
+            if (type[0] != '\0' && strcmp(functions[current_func].return_type, "unknown") == 0 && !in_param_list) {
+                strcpy(functions[current_func].return_type, type);
+            }
+        }
+        
+        if (in_func_def && in_func_decl && strstr(line, "\"_nodetype\": \"ParamList\"")) {
+            in_param_list = 1;
+        }
+        
+        if (in_func_def && in_param_list && strstr(line, "\"_nodetype\": \"Decl\"")) {
+            current_param = functions[current_func].param_count++;
+            strcpy(functions[current_func].param_names[current_param], "unnamed");
+            strcpy(functions[current_func].param_types[current_param], "unknown");
+        }
+        
+        if (in_func_def && in_param_list && current_param >= 0 && strstr(line, "\"name\":")) {
+            char name[MAX_NAME_LENGTH] = {0};
+            extract_value(line, "\"name\":", name, MAX_NAME_LENGTH);
+            
+            if (name[0] != '\0') {
+                strcpy(functions[current_func].param_names[current_param], name);
+            }
+        }
+        
+        if (in_func_def && in_param_list && current_param >= 0 && strstr(line, "\"names\": [")) {
+            char type[MAX_NAME_LENGTH] = {0};
+            extract_value(line, "\"names\": [", type, MAX_NAME_LENGTH);
+            
+            if (type[0] != '\0') {
+                strcpy(functions[current_func].param_types[current_param], type);
+            }
+        }
+        
+        if (in_func_def && strstr(line, "\"_nodetype\": \"If\"")) {
+            functions[current_func].if_count++;
+        }
+        
+        if (in_param_list && strstr(line, "]")) {
+            in_param_list = 0;
+            current_param = -1;
+        }
+        
+        if (in_func_decl && brace_level <= 1) {
+            in_func_decl = 0;
+        }
+    }
+}
+
+void print_results() {
+    printf("함수 개수: %d\n\n", function_count);
+    
+    for (int i = 0; i < function_count; i++) {
+        printf("함수 이름: %s\n", functions[i].name);
+        printf("리턴 타입: %s\n", functions[i].return_type);
+        
+        printf("파라미터: ");
+        if (functions[i].param_count == 0) {
+            printf("없음\n");
+        } else {
+            printf("\n");
+            for (int j = 0; j < functions[i].param_count; j++) {
+                printf("  - 타입: %s, 변수명: %s\n", 
+                       functions[i].param_types[j], functions[i].param_names[j]);
+            }
+        }
+        
+        printf("if 조건문 개수: %d\n\n", functions[i].if_count);
+    }
 }

@@ -69,27 +69,34 @@ char* extract_function_name(const char* func_start) {
     const char* name_keyword = "\"name\":";
     const char* name_pos = strstr(func_start, name_keyword);
     if (!name_pos) return strdup("Unknown");
-    
+
     name_pos += strlen(name_keyword);
     while (*name_pos == ' ' || *name_pos == '\"') name_pos++;
-    
+
     const char* end_pos = strchr(name_pos, '\"');
+    if (!end_pos) return strdup("Unknown");
+
     int len = end_pos - name_pos;
-    char* name = (char*)malloc(len + 1);
+    char* name = malloc(len + 1);
+    if (!name) {
+        printf("메모리 할당 실패\n");
+        exit(1);
+    }
     strncpy(name, name_pos, len);
     name[len] = '\0';
-    
+
     return name;
 }
+
 
 Parameter** extract_function_parameters(const char* func_start, int* param_count) {
     const char* params_keyword = "\"params\":";
     const char* params_pos = strstr(func_start, params_keyword);
     if (!params_pos) return NULL;
-    
+
     params_pos += strlen(params_keyword);
     while (*params_pos == ' ' || *params_pos == '[') params_pos++;
-    
+
     *param_count = 0;
     Parameter** parameters = NULL;
 
@@ -144,6 +151,7 @@ Parameter** extract_function_parameters(const char* func_start, int* param_count
 
     return parameters;
 }
+
 
 int count_if_conditions(const char* func_start) {
     int count = 0;

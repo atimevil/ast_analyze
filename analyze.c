@@ -185,6 +185,7 @@ Parameter** extract_function_parameters(const char* func_start, int* param_count
     return parameters;
 }
 
+
 int count_if_conditions(const char* func_start) {
     int count = 0;
     const char* if_keyword = "\"If\""; // JSON 형식에 맞게 수정

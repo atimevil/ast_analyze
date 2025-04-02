@@ -165,7 +165,7 @@ void analyze_ast_file(const char* filename) {
 int main() {
     analyze_ast_file("ast.json");
 
-    printf("총 함수 개수 : %d", function_count);
+    printf("총 함수 개수 : %d\n", function_count);
     
     printf("[함수 분석 결과]\n");
     

@@ -164,8 +164,11 @@ void analyze_ast_file(const char* filename) {
 
 int main() {
     analyze_ast_file("ast.json");
+
+    printf("총 함수 개수 : %d", function_count);
     
     printf("[함수 분석 결과]\n");
+    
     for (int i = 0; i < function_count; i++) {
         printf("%d. %s()\n", i+1, strlen(functions[i].name) > 0 ? functions[i].name : "");
         printf("   - 반환 타입: %s\n", functions[i].return_type);

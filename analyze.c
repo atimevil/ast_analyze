@@ -114,7 +114,7 @@ void analyze_ast_file(const char* filename) {
                 if (strstr(line, "\"_nodetype\": \"Decl\"")) {
                     current_param = functions[current_func].param_count++;
                     if (current_param < 20) {
-                        strcpy(functions[current_func].param_types[current_param], DEFAULT_UNKNOWN_TYPE);
+                        strcpy(functions[current_func].param_types[current_param], "");
                         strcpy(functions[current_func].param_names[current_param], "");
                     }
                 }
